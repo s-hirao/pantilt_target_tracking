@@ -1,0 +1,16 @@
+<launch>
+	<arg name="mode" default="true"/>
+	<group if="$(arg mode)">
+		<node pkg="pantilt_position_control" name="summary_step1_node" type="summary_step1_node" output="screen">
+			<remap from="PublisherData" to="new_name"/>
+			<param name="parameter" value="alternative hello"/>			
+			<param name="parameter2" value="123456789"/>	
+		</node>
+		<!--<node pkg="pantilt_position_control" name="node" type="node">-->
+			<!--<remap from="PublisherData" to="new_name"/>-->
+		<!--</node>-->
+	</group>
+</launch>
+<!--コメントアウト-->
+<!--ifとunlessはgyaku trueとfalseがgyaku-->
+<!--hennkann　eval-->

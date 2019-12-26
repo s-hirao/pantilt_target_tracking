@@ -16,6 +16,7 @@ find_package(catkin REQUIRED COMPONENTS
 	sensor_msgs
   message_generation
   cv_bridge
+  obstacle_detection_2019
 )
 find_package(OpenCV REQUIRED)
 find_package(PCL REQUIRED)
@@ -58,8 +59,6 @@ find_package(Eigen3 REQUIRED)
 add_message_files(
    FILES
    pantiltArray.msg
-   point2D.msg
-   pointArray.msg
 #   Message1.msg
 #   Message2.msg
  )
@@ -117,7 +116,7 @@ add_message_files(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
+  INCLUDE_DIRS include
 #  LIBRARIES pantilt_position_control
   CATKIN_DEPENDS roscpp rospy std_msgs sensor_msgs message_runtime
 #  DEPENDS system_lib
@@ -130,8 +129,7 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 include_directories(
-# include
-  ${catkin_INCLUDE_DIRS}
+  #include
   ${catkin_INCLUDE_DIRS}
   ${OpenCV_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
@@ -151,7 +149,6 @@ include_directories(
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/pantilt_position_control_node.cpp)
-add_executable(pantilt_position_control_node src/pantilt_position_control.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -162,13 +159,15 @@ add_executable(pantilt_position_control_node src/pantilt_position_control.cpp)
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-add_dependencies(pantilt_position_control_node ${PROJECT_NAME}_gencfg)
-add_dependencies(pantilt_position_control_node ${PROJECT_NAME}_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
+
+add_executable(pantilt_position_control_node src/pantilt_position_control.cpp)
+add_dependencies(pantilt_position_control_node ${PROJECT_NAME}_gencfg)
+add_dependencies(pantilt_position_control_node ${PROJECT_NAME}_generate_messages_cpp)
 target_link_libraries(pantilt_position_control_node
    ${catkin_LIBRARIES} ${OpenCV_LIBRARIES}
  )

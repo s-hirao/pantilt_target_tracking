@@ -57,7 +57,7 @@ find_package(Eigen3 REQUIRED)
 ## Generate messages in the 'msg' folder
 add_message_files(
    FILES
-  pantiltArray.msg
+   pantiltArray.msg
    point2D.msg
    pointArray.msg
 #   Message1.msg

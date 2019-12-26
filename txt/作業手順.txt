@@ -1,0 +1,8 @@
+ターミナル上
+roscore
+roslaunch roscore_communication roscore_communication.launch
+rosparam set use_sim_time true
+rosrun pantilt_velocity_calculation pantilt_velocity_calculation_node
+roslaunch zed_wrapper zed.launch
+
+

@@ -40,6 +40,7 @@ class pantiltPositionControlClass{
 	ros::Publisher pantilt_publisher , beego_publisher ;
     //subscriber
 	ros::subscriber position_control_subscriber ;
+
 	// message_filters::Subscriber<sensor_msgs::Image> depth_subscriber;
 	// 今回使わないmessage_filters::Subscriber<nav_msgs::Odometry> camera_odometry_subscriber;
 	// message_filters::Subscriber<beego_control::beego_encoder> beego_encoder_subscriber;
@@ -47,6 +48,7 @@ class pantiltPositionControlClass{
     //message_filters
 	// typedef message_filters::sync_policies::ApproximateTime</*sensor_msgs::Image,nav_msgs::Odometry,*/beego_control::beego_encoder,pantilt_position_control::pantiltArray> MySyncPolicy ;
 	// message_filters::Synchronizer<MySyncPolicy> sync ;
+	
 	// msg 変数 
 	geometry_msgs/Twist beegoMessage;//ビーゴ命令用
 	std_msgs::UInt16MultiArray panTiltMessage;//ラテパンダ命令用
@@ -77,13 +79,15 @@ class pantiltPositionControlClass{
 	double distance_x ;
 	double distance_y ;
 	double distance_z ;
-	// 誤差分だけ目標角度パンチルト
-	int pan_angular ;
-	int tilt_angular; 
+	// 実際にPWMとして入力する回転速度
 	int pan_velocity; 
 	int tilt_velocity;
-	// 実際に指令値として入力するパン
-	int order_pan ;
+	// 実際に指令値として入力するパン 誤差分だけ目標角度パンチルト
+	int pan_angular ;
+	// int tilt_angular; 
+	// error
+	Eigen::VectorXd e_vel  ;
+	Eigen::VectorXd e_theta;
 	// goal
 	Eigen::VectorXd t_g_c;//カメラ座標の対象の目標位置
 	Eigen::VectorXd phi_g_c ;//カメラ座標目標回転ベクトルヨー角パンチルト命令値に使用
@@ -107,7 +111,7 @@ class pantiltPositionControlClass{
 	// 対象位置のコールバック関数
 	void TargetPointCallback()
 	void calculationProcess();
-	void copyPantiltData();
+	void angularCopyAndCheck();
 	void goalSet();
 	void sensorDataGet();
 	void deviation();
@@ -197,7 +201,7 @@ void pantiltPositionControlClass::calculationProcess()
 	input();
 	beegoVelocityOrder();
 	RotationToPWM();
-	copyPantiltData();
+	angularCopyAndCheck();
 	publishJudgment();
 } 
 
@@ -244,34 +248,13 @@ void pantiltPositionControlClass::deviation()
 {
 	//偏差 観測データと目標値の差
 	// 並進　位置がどっちが短いかによって
-	// if(t_g_c - t_o_c > 0){
-	// error.block<3,1>(0,0) = t_g_c ;
-	// error.block<3,1>(0,0) = t_g_c ;
-	// }
-	// else if(t_g_c - t_o_c < 0){
-	// error.block<3,1>(0,0) = t_g_c ;
-	// error.block<3,1>(0,0) = t_g_c ;
-	// }
-	// else{
-	// error.block<3,1>(0,0) = t_g_c ;
-	// error.block<3,1>(0,0) = t_g_c ;
-	// }
-	// 回転
-	// if(phi_g_c - psi_g_c > 0){
-	// error.block<3,1>(1,0) = t_g_c ;
-	// error.block<3,1>(1,0) = t_g_c ;
-	// }
-	// else if(phi_g_c - psi_g_c < 0){
-	// error.block<3,1>(1,0) = t_g_c ;
-	// error.block<3,1>(1,0) = t_g_c ;
-	// }
-	// else{
-	// error.block<3,1>(1,0) = t_g_c ;
-	// error.block<3,1>(1,0) = t_g_c ;
-	// }
 	error.block<3,1>(1,0) = t_g_c - t_o_c ;
 	error.block<3,1>(1,0) = t_g_c - t_o_c ;
 	ROS_INFO("error_value_ok");
+	e_vel   = error.block,3,1>(1,0) ;
+	e_theta = error.block,3,1>(1,0) ;
+	pan_angular  = e_vel   ;
+	tilt_angular = e_theta ; 
 }
 
 // 逆行列J-1の作成
@@ -309,7 +292,7 @@ void pantiltPositionControlClass::input()
 	ROS_INFO("input_u_ok");
 }
 
-void beegoVelocityOrder()
+void pantiltPositionControlClass::beegoVelocityOrder()
 {
 	// ビーゴ命令値
 	beegoMessage.linear.x = vel_c_t(0);
@@ -321,24 +304,24 @@ void pantiltPositionControlClass::RotationToPWM()
 {
 	// 回転ベクトルからpwmに変換及び検問
 	回転式導出後変更する
-	panTiltMessage[2];
-	panTiltMessage[3];
+	panTiltMessage.data[2] = pan_velocity ;
+	panTiltMessage.data[3] = tilt_velocity;
 	ROS_INFO("pantilt_PWM_velocity_ok");
 }
 
-void pantiltPositionControlClass::copyPantiltData()
+void pantiltPositionControlClass::angularCopyAndCheck()
 {
 	// 指令値用に目標値角度コピーかつ検問停止用
     pantiltTimeMsg.pantiltArray.data.resize(4);
     if(psi_o_c(2) => 5 && psi_o_c(2) =<90 ){
-		order_pan = psi_o_c(2) - psi_o_c(2)%1;
-		order_pan += 90 ;
-		pantiltTimeMsg.pantiltArray.data[0] = order_pan;
+		pan_angular = psi_o_c(2) - psi_o_c(2)%1;
+		pan_angular += 90 ;
+		pantiltTimeMsg.pantiltArray.data[0] = pan_angular;
 	}
 	else if(psi_o_c(2) < 5 && psi_o_c(2) => -90){
-		order_pan = psi_o_c(2) - psi_o_c(2)%1;
-		order_pan += 90 ;
-		pantiltTimeMsg.pantiltArray.data[0] = order_pan;
+		pan_angular = psi_o_c(2) - psi_o_c(2)%1;
+		pan_angular += 90 ;
+		pantiltTimeMsg.pantiltArray.data[0] = pan_angular;
 	}
 	else if(psi_o_c(2) < 5.0 && psi_o_c(2) => -5.0 ){
 		rqt_check = false ;
@@ -357,10 +340,10 @@ void pantiltPositionControlClass::plusTime()
 	pantiltTimeMessage.header.frame_id = "pantilt_command" ;
 	pantiltTimeMessage.header.stamp = ros::Time::now() ;
 	pantiltTimeMessage.pantiltArray.data.resize(4);
-	pantiltTimeMessage.pantiltArray.data[0] = order_pan;//入力角度値 z軸
+	pantiltTimeMessage.pantiltArray.data[0] = pan_angular;//入力角度値 z軸
 	pantiltTimeMessage.pantiltArray.data[1] = psi_o_c(1) - psi_o_c(1)%1;//入力角度値 y軸
-	pantiltTimeMessage.pantiltArray.data[2] = panTiltMessage[2];//入力回転速度値 z軸
-	pantiltTimeMessage.pantiltArray.data[3] = panTiltMessage[3];//入力回転速度値 y軸
+	pantiltTimeMessage.pantiltArray.data[2] = panTiltMessage.data[2];//入力回転速度値 z軸
+	pantiltTimeMessage.pantiltArray.data[3] = panTiltMessage.data[3];//入力回転速度値 y軸
 	ROS_INFO("pantilt_time_copy_ok");
 }
 
@@ -397,12 +380,12 @@ void pantiltPositionControlClass::publishPantiltTimeData()
 pantiltPositionControlClass::pantiltPositionControlClass()
 :/*depth_subscriber(nodehandle_subscriber, "/zed/zed_node/depth/depth_registered", 1)
 ,camera_odometry_subscriber(nodehandle_subscriber,"/zed/zed_node/odom",1)
-,pantilt_subscriber(nodehandle_subscriber,"PanTiltPlusTimeData",1)*/
-,sync(MySyncPolicy(10),rgb_image_subscriber, depth_image_subscriber, pantilt_subscriber)
+,pantilt_subscriber(nodehandle_subscriber,"PanTiltPlusTimeData",1)
+,sync(MySyncPolicy(10),rgb_image_subscriber, depth_image_subscriber, pantilt_subscriber)*/
 ,rqt_check(false)
 ,lambda(0.0),distance_x(0.0),distance_y(0.0),distance_z(0.0) 
-,start_pan_angular(90),start_tilt_angular(104),order_pan(0)
-/*,pan_angular(90), tilt_angular(104),pan_velocity(0),tilt_velocity(0)*/
+,start_pan_angular(90),start_tilt_angular(104),pan_angular(0)
+/*,pan_angular(90), tilt_angular(104)*/,pan_velocity(0),tilt_velocity(0)
 time(ros::Time::now())
 {
 	position_control_subscriber = nodehandle_subscriber.subscriber("classificationData", 1, TargetPointCallback,this);

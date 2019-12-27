@@ -63,6 +63,10 @@ class pantiltPositionControlClass{
 	obstacle_detection_2019::ClassificationVelocityData copyTargetGravityCenterMessage;//カメラ座標からの対象物体の重心コピー用
 	geometry_msgs::Point targetGravityCenterMessage;//カメラ座標からの対象物体の重心
 	ros::Time time ;
+	// センサーデータの幅を求めるための変数
+	double gcmax , gcmin ;
+	double width ;//対象の幅x成分
+
 	//コントローラ設計時の変数
 	// 各成分
 	// スタートのパンチルト姿勢
@@ -75,11 +79,11 @@ class pantiltPositionControlClass{
 	double distance_y ;
 	double distance_z ;
 	// 実際にPWMとして入力する回転速度
-	int pan_velocity; 
-	int tilt_velocity;
+	// int pan_velocity; 
+	// int tilt_velocity;
 	// 実際に指令値として入力するパン 誤差分だけ目標角度パンチルト
-	int pan_angular ;
-	int tilt_angular; 
+	// int pan_angular ;
+	// int tilt_angular; 
 	// 2-2行列
 	// 二重行列
 	// std::vector<Eigen::MatrixXd,Eigen::aligned_allocator<Eigen::MatrixXd> > J;
@@ -105,7 +109,7 @@ class pantiltPositionControlClass{
 	// input_u
 	Eigen::Vector3d vel_c_t;//命令速度今は直進のみ
 	Eigen::Vector3d omega_c_psi;//命令角度パンチルトのみ
-	// rqt確認用
+	// 確認用
 	// bool check;
     public:
     //コンストラクタ：クラス定義に呼び出されるメソッド
@@ -119,7 +123,7 @@ class pantiltPositionControlClass{
 	// 対象位置のコールバック関数
 	void TargetPointCallback(const obstacle_detection_2019::ClassificationVelocityData::ConstPtr& msg);
 	void calculationProcess();
-	void angularCopyAndCheck();
+	void angularCopy();
 	void goalSet();
 	void sensorDataGet();
 	void deviation();
@@ -203,15 +207,30 @@ void pantiltPositionControlClass::TargetPointCallback(const obstacle_detection_2
 void pantiltPositionControlClass::calculationProcess()
 {
 	// targetGravityCenterMessage = copyTargetGravityCenterMessage.data[クラスタ番号].gc;//重心
-	targetGravityCenterMessage = copyTargetGravityCenterMessage.data[].gc;//重心
+	// 重心の幅求める　クラスタにより要検討
+		gcmax = copyTargetGravityCenterMessage.data[0].gc.x;
+		gcmin = copyTargetGravityCenterMessage.data[0].gc.x;
+ 		for(int k=1; k <= copyTargetGravityCenterMessage.size ; k++)
+		{
+        if(copyTargetGravityCenterMessage.data[0].gc.x > gcmax)
+		{
+            gcmax = copyTargetGravityCenterMessage.data[0].gc.x;
+        }
+        if(copyTargetGravityCenterMessage.data[0].gc.x < gcmin)
+		{
+            gcmin = copyTargetGravityCenterMessage.data[0].gc.x;
+        }        
+    	}
+	targetGravityCenterMessage.x = (gcmax +gcmin) /2;//重心
+	targetGravityCenterMessage.y = copyTargetGravityCenterMessage.data[0].gc.y;//重心
+	targetGravityCenterMessage.z = copyTargetGravityCenterMessage.data[0].gc.z;//重心
+	
 	goalSet();
 	sensorDataGet();
 	deviation();
-	// inverse();
-	input();
 	beegoVelocityOrder();
 	RotationToPWM();
-	angularCopyAndCheck();
+	angularCopy();
 	plusTime();
 	publishJudgment();
 } 
@@ -224,11 +243,11 @@ void pantiltPositionControlClass::goalSet()
 	// t_g_c.resize(3) ;
 	// phi_g_c .resize(3);
 	// 各データの入力
-	// 目標距離
+	// 目標距離　自分で設定
 	t_g_c(0) = distance_x ;
 	t_g_c(1) = distance_y ;
 	t_g_c(2) = distance_z ;
-	//目標角度は0
+	// 目標角度は0　
 	phi_g_c = Eigen::Vector3d::Zero();
 	ROS_INFO("goal_position_set_ok");
 }
@@ -249,7 +268,7 @@ void pantiltPositionControlClass::sensorDataGet()
 	// 実験よりロボットと対象が動いてない時のパンチルト動作の誤差を見て仮に0に近似する
 	psi_o_c(0) = 0 ;
 	psi_o_c(1) = 104;
-	// 目標までのズレ
+	// 目標までのズレ　対象の幅分考慮　
 	psi_o_c(2) = atan2(t_o_c(0) , t_o_c(1));
 	ROS_INFO("receive_target_position_ok");
 }
@@ -260,9 +279,27 @@ void pantiltPositionControlClass::deviation()
 	//偏差 観測データと目標値の差
 	// error_difference.resize(3);
 	// error_theta.resize(3);
+	// 逆かも
 	error_difference  = t_g_c - t_o_c ;
 	error_theta 	  = phi_g_c - psi_o_c ;
 	ROS_INFO("error_value_ok");
+	// 距離間が０付近で終了この時の対象姿勢を解析時にみる
+	// センサー誤差 速度推定によりカルマンフィルタが使用されている
+	// 対象の幅とパンチルトの揺れを考慮した距離の範囲 0近ければ命令値と距離から姿勢を算出
+	if((t_o_c.norm()) <= t_g_c.norm()+width && t_o_c.norm()>= t_g_c.norm()+width)
+	{
+		// 止める用
+		vel_c_t = Eigen::Vector3d::Zero();
+		// 対象までの角度　障害物姿勢のこと
+		psi_o_c(2) = atan2(t_o_c(0) , t_o_c(1));
+		// 同じ角度命令値を入れる　固定するため
+		error_theta = panTiltMessage.data[0];
+		error_theta = panTiltMessage.data[1];
+	}
+	else{
+	// inverse();
+	input();
+	}
 }
 
 // 逆行列J-1の作成
@@ -307,39 +344,26 @@ void pantiltPositionControlClass::beegoVelocityOrder()
 void pantiltPositionControlClass::RotationToPWM()
 {
 	// 回転ベクトルからpwmに変換及び検問
-	// 回転式導出後変更する
-	panTiltMessage.data[2] = pan_velocity ;
-	panTiltMessage.data[3] = tilt_velocity;
+	回転式導出後変更する
+	omega_c_psi(2) =  ;
+	omega_c_psi(1) =  ;
+	panTiltMessage.data[2] = (int)(omega_c_psi(2)+ 0.5);
+	panTiltMessage.data[3] = (int)(omega_c_psi(1)+ 0.5);
 	ROS_INFO("pantilt_PWM_velocity_ok");
 }
 
-void pantiltPositionControlClass::angularCopyAndCheck()
+void pantiltPositionControlClass::angularCopy()
 {
-	// 四捨五入
-	pan_angular = (int)(error_theta(2)+ 0.5); 
-	// 指令値用に目標値角度コピーかつ検問停止用
-    pantiltTimeMessage.pantiltArray.data.resize(4);
-	// 対象との角度差左右の時場合分けをする0から180に変換
-	// 右
-    if(pan_angular >= 5 && pan_angular <= 90 ){	
-		pan_angular += 90 ;
-		pantiltTimeMessage.pantiltArray.data[0] = pan_angular;
-	}
-	// 左
-	else if(pan_angular <= 5 && pan_angular >= -90){
-		pan_angular += 90 ;
-		pantiltTimeMessage.pantiltArray.data[0] = pan_angular;
-	}
-	// 正面
-	else if(pan_angular < 5 && pan_angular >= -5 ){
-		// check = false ;
-	}
-	// それ以外
-	else {
-		return ;
-	}
+	pantiltTimeMessage.pantiltArray.data.resize(4);
+	// 指令値用に目標値角度コピー
+	// 四捨五入 int出ないと送れない
+	// 対象との角度差正面90度が0度であり
+	// パンは正面が90度であるため0から180に変換
+	panTiltMessage.data[0] = (int)(error_theta(2)+ 0.5) + 90; 
+	pantiltTimeMessage.pantiltArray.data[0] = panTiltMessage.data[0];
+	// チルトコピー用
 	pantiltTimeMessage.pantiltArray.data[1] = (int)(error_theta(1)+ 0.5);
-	tilt_angular = (int)(error_theta(1)+ 0.5);
+	panTiltMessage.data[1] = (int)(error_theta(1)+ 0.5);
 	ROS_INFO("pan_angular_ok");
 }
 
@@ -350,8 +374,8 @@ void pantiltPositionControlClass::plusTime()
 	pantiltTimeMessage.header.frame_id = "pantilt_command" ;
 	pantiltTimeMessage.header.stamp = ros::Time::now() ;
 	pantiltTimeMessage.pantiltArray.data.resize(4);
-	pantiltTimeMessage.pantiltArray.data[0] = pan_angular ;//入力角度値 z軸
-	pantiltTimeMessage.pantiltArray.data[1] = tilt_angular;//入力角度値 y軸
+	pantiltTimeMessage.pantiltArray.data[0] = panTiltMessage.data[0] ;//入力角度値 z軸
+	pantiltTimeMessage.pantiltArray.data[1] = panTiltMessage.data[1];//入力角度値 y軸
 	pantiltTimeMessage.pantiltArray.data[2] = panTiltMessage.data[2];//入力回転速度値 z軸
 	pantiltTimeMessage.pantiltArray.data[3] = panTiltMessage.data[3];//入力回転速度値 y軸
 	ROS_INFO("pantilt_time_copy_ok");
@@ -395,8 +419,8 @@ pantiltPositionControlClass::pantiltPositionControlClass()
 ,check(false)
 ,*/lambda(0.0),distance_x(0.0),distance_y(0.0),distance_z(0.0) 
 ,start_pan_angular(90),start_tilt_angular(104)
-,pan_angular(90), tilt_angular(104),pan_velocity(0),tilt_velocity(0)
 ,time(ros::Time::now())
+,gcmax(0),gcmin(0),width(0),k(0)
 {
 	position_control_subscriber = nodehandle_subscriber.subscribe("classificationDataEstimateVelocity", 1, &pantiltPositionControlClass::TargetPointCallback,this);
 	pantilt_publisher = nodehandle_pantilt_publisher.advertise<std_msgs::UInt16MultiArray>("PanTilt",1);

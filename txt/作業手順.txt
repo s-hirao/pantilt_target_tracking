@@ -13,6 +13,8 @@ roscore
 roslaunch roscore_communication roscore_communication.launch
 rosparam set use_sim_time true
 rosrun pantilt_velocity_calculation pantilt_velocity_calculation_node
+rostopic echo -p /VelocityData > ~/pantilt_Rotation_vector_csv/rotation_0max_5.csv
+rosbag play --clock (name).bag 
 roslaunch zed_wrapper zed.launch
 
 github

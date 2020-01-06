@@ -185,7 +185,7 @@ void pantiltPositionControlClass::calculationProcess()
 } 
 void pantiltPositionControlClass::targetDecision()
 {
-	// 重心の幅求める
+// 重心の幅求める
 	width = 0 ;
 	widthMax = 0 ;
 	// 各セルごとの重心位置とクラスタ全体の重心との距離を比較し最大距離を求めその円の半径を対象の幅とする
@@ -193,22 +193,21 @@ void pantiltPositionControlClass::targetDecision()
 		goalDistance = sqrt(distance_x*distance_x
 					+distance_y*distance_y
 					+distance_z*distance_z);
-	// クラスタデータの数,要素を求める
 	// 全クラスタの中の重心がロボットとの距離と一番近いのを追跡対象にする
-	for(l = 0; l <  最大クラスタ要素数 ; l++)
+	for(l = 0; l < (int)copyTargetGravityCenterMessage.data.size() ; l++)
 	{
 		// クラスタ距離の計算
 		gcCluster = sqrt(copyTargetGravityCenterMessage.data[l].gc.x*copyTargetGravityCenterMessage.data[l].gc.x
 						+copyTargetGravityCenterMessage.data[l].gc.y*copyTargetGravityCenterMessage.data[l].gc.y
 						+copyTargetGravityCenterMessage.data[l].gc.z*copyTargetGravityCenterMessage.data[l].gc.z );
 		// 最初の検出した障害物
-		if(l == 0 && gcMin >= goalDistance){gcMin = gcCluster};
+		if(l == 0 && gcMin >= goalDistance){gcMin = gcCluster ;}
 			// 一番距離が近い障害物をgcMinに入れる
 			if(gcMin >= gcCluster && gcCluster >= goalDistance)
 			{
 				gcMin = gcCluster ;
-				// 特定したクラスタを障害物として幅計算
- 				for(k = 1; k <= クラスタ内の３次元データの最大要素数 ; k++)
+				// 特定したクラスタを障害物としてその重心からの幅計算
+ 				for(k = 1; k <= (int)copyTargetGravityCenterMessage.data[l].pt.size() ; k++)
 				{
 					width = sqrt(
 								 ((copyTargetGravityCenterMessage.data[l].pt[k].x - copyTargetGravityCenterMessage.data[l].gc.x)

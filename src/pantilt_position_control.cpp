@@ -49,6 +49,7 @@ class pantiltPositionControlClass{
 	// センサーデータの幅を求めるための変数
 	// for文用
 	int i ,k ,l;
+	double goalDistance ;
 	double gcMin;
 	double gcCluster;
 	double width ;//対象の幅x,y成分
@@ -209,8 +210,7 @@ void pantiltPositionControlClass::targetDecision()
 				// 特定したクラスタを障害物としてその重心からの幅計算
  				for(k = 1; k <= (int)copyTargetGravityCenterMessage.data[l].pt.size() ; k++)
 				{
-					width = sqrt(
-								 ((copyTargetGravityCenterMessage.data[l].pt[k].x - copyTargetGravityCenterMessage.data[l].gc.x)
+					width = sqrt(((copyTargetGravityCenterMessage.data[l].pt[k].x - copyTargetGravityCenterMessage.data[l].gc.x)
 								* (copyTargetGravityCenterMessage.data[l].pt[k].x - copyTargetGravityCenterMessage.data[l].gc.x))
 								+((copyTargetGravityCenterMessage.data[l].pt[k].y - copyTargetGravityCenterMessage.data[l].gc.y)
 								* (copyTargetGravityCenterMessage.data[l].pt[k].y - copyTargetGravityCenterMessage.data[l].gc.y))
@@ -234,7 +234,7 @@ void pantiltPositionControlClass::targetDecision()
 			}
 	}
 }
-void pantiltPositionControlClass::stop()git push origin master
+void pantiltPositionControlClass::stop()
 {	
 	// 対象の幅とパンチルトの揺れを考慮した距離の範囲 0近ければ終了この時の命令値と距離から対象姿勢を算出
 	// 奥行き設定 とりあえず円
@@ -393,7 +393,7 @@ pantiltPositionControlClass::pantiltPositionControlClass()
 ,start_pan_angular(90),start_tilt_angular(104)
 ,time(ros::Time::now())
 ,width(0),widthMax(0),length(0),i(0),k(0),l(0)
-,pwmRotationYaw(0),pwmRotationPitch(0),gcMin(0),gcCluster(0)
+,pwmRotationYaw(0),pwmRotationPitch(0),gcMin(0),gcCluster(0),goalDistance(0)
 ,minRotation(1),maxRotation(118),eps(0.0001),solution(0),pwm(0),pwmCenter(0),center(0)
 {
 	position_control_subscriber = nodehandle_subscriber.subscribe("/robot2/classificationDataEstimateVelocity", 1, &pantiltPositionControlClass::TargetPointCallback,this);

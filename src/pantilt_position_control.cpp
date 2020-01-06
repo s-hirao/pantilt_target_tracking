@@ -161,13 +161,14 @@ void pantiltPositionControlClass::TargetPointCallback(const obstacle_detection_2
 {
 	// コピー
 	copyTargetGravityCenterMessage = *msg ;
-	ROS_INFO("target_position_get_ok");
+	ROS_INFO("target_position_copy_ok");
 	// 計算プロセス
 	calculationProcess();
 	if(check==false)
 	{
 		// 目標角度値とビーゴ速度0をずっと入力
 		publishJudgment();
+		ROS_INFO("stop");
 	}
 	ROS_INFO("process_finish");
 }
@@ -184,43 +185,57 @@ void pantiltPositionControlClass::calculationProcess()
 } 
 void pantiltPositionControlClass::targetDecision()
 {
-	// targetGravityCenterMessage = copyTargetGravityCenterMessage.data[クラスタ番号].gc;//重心
 	// 重心の幅求める
 	width = 0 ;
 	widthMax = 0 ;
 	// 各セルごとの重心位置とクラスタ全体の重心との距離を比較し最大距離を求めその円の半径を対象の幅とする
-	// 全クラスタの中の重心が一番近いのを追跡対象にする
-	for(l=1;l<=copyTargetGravityCenterMessage.size.data ; l++)
-	{
-		gcMin = sqrt(distance_x*distance_x
+	// 目標の重心距離の決定
+		goalDistance = sqrt(distance_x*distance_x
 					+distance_y*distance_y
 					+distance_z*distance_z);
+	// クラスタデータの数,要素を求める
+	// 全クラスタの中の重心がロボットとの距離と一番近いのを追跡対象にする
+	for(l = 0; l <  最大クラスタ要素数 ; l++)
+	{
+		// クラスタ距離の計算
 		gcCluster = sqrt(copyTargetGravityCenterMessage.data[l].gc.x*copyTargetGravityCenterMessage.data[l].gc.x
-					+copyTargetGravityCenterMessage.data[l].gc.y*copyTargetGravityCenterMessage.data[l].gc.y
-					+copyTargetGravityCenterMessage.data[l].gc.z*copyTargetGravityCenterMessage.data[l].gc.z );
-			if(gcMin < gcCluster)
+						+copyTargetGravityCenterMessage.data[l].gc.y*copyTargetGravityCenterMessage.data[l].gc.y
+						+copyTargetGravityCenterMessage.data[l].gc.z*copyTargetGravityCenterMessage.data[l].gc.z );
+		// 最初の検出した障害物
+		if(l == 0 && gcMin >= goalDistance){gcMin = gcCluster};
+			// 一番距離が近い障害物をgcMinに入れる
+			if(gcMin >= gcCluster && gcCluster >= goalDistance)
 			{
 				gcMin = gcCluster ;
-				// 円による障害物の幅計算
- 				for(k=1; k <= copyTargetGravityCenterMessage.data[l].size.data ; k++)
+				// 特定したクラスタを障害物として幅計算
+ 				for(k = 1; k <= クラスタ内の３次元データの最大要素数 ; k++)
 				{
-					width = sqrt((copyTargetGravityCenterMessage.data[l].pt[k].x * copyTargetGravityCenterMessage.data[l].pt[k].x)
-								+(copyTargetGravityCenterMessage.data[l].pt[k].y * copyTargetGravityCenterMessage.data[l].pt[k].x)
-								+(copyTargetGravityCenterMessage.data[l].pt[k].y * copyTargetGravityCenterMessage.data[l].pt[k].x));
-    				if(width > widthMax)
+					width = sqrt(
+								 ((copyTargetGravityCenterMessage.data[l].pt[k].x - copyTargetGravityCenterMessage.data[l].gc.x)
+								* (copyTargetGravityCenterMessage.data[l].pt[k].x - copyTargetGravityCenterMessage.data[l].gc.x))
+								+((copyTargetGravityCenterMessage.data[l].pt[k].y - copyTargetGravityCenterMessage.data[l].gc.y)
+								* (copyTargetGravityCenterMessage.data[l].pt[k].y - copyTargetGravityCenterMessage.data[l].gc.y))
+								);
+								// +((copyTargetGravityCenterMessage.data[l].pt[k].z - copyTargetGravityCenterMessage.data[l].gc.z)
+								// * (copyTargetGravityCenterMessage.data[l].pt[k].z - copyTargetGravityCenterMessage.data[l].gc.z))
+    				// 全体の重心から幅が広い
+					if(width >= widthMax)
 					{
     				    widthMax = width;
     				}
     			}
-				// センサー誤差 速度推定によりカルマンフィルタが使用されているためセンサーデータフィルタ無し
-				// 三次元位置(重心)
-				targetGravityCenterMessage.linear.x = copyTargetGravityCenterMessage.data[l].gc.y;
-				targetGravityCenterMessage.linear.y = copyTargetGravityCenterMessage.data[l].gc.y;
-				targetGravityCenterMessage.linear.z = copyTargetGravityCenterMessage.data[l].gc.z;
+				// センサー誤差 速度推定によりカルマンフィルタが使用されている
+				// センサデータそのまま障害物位置確定
+				targetGravityCenterMessage.linear.x = copyTargetGravityCenterMessage.data[l].gc.y;//重心
+				targetGravityCenterMessage.linear.y = copyTargetGravityCenterMessage.data[l].gc.y;//重心
+				targetGravityCenterMessage.linear.z = copyTargetGravityCenterMessage.data[l].gc.z;//重心
+				ROS_INFO("x= %f" ,targetGravityCenterMessage.linear.x);
+				ROS_INFO("y= %f" ,targetGravityCenterMessage.linear.y);
+				ROS_INFO("z= %f" ,targetGravityCenterMessage.linear.z);
 			}
 	}
 }
-void pantiltPositionControlClass::stop()
+void pantiltPositionControlClass::stop()git push origin master
 {	
 	// 対象の幅とパンチルトの揺れを考慮した距離の範囲 0近ければ終了この時の命令値と距離から対象姿勢を算出
 	// 奥行き設定 とりあえず円

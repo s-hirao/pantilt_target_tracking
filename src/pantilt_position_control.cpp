@@ -27,7 +27,7 @@
 class pantiltPositionControlClass{
     private:
     //nodehandle
-	ros::NodeHandle nodehandle_publisher, nodehandle_pantilt_publisher, nodehandle_beego_publisher , nodehandle_target_publisher , nodehandle_subscriber ;
+	ros::NodeHandle nodehandle_pantilt_order_publisher, nodehandle_pantilt_publisher, nodehandle_beego_publisher , nodehandle_target_publisher , nodehandle_subscriber ;
 	//publisher
 	ros::Publisher pantilt_publisher, pantilt_time_publisher , beego_publisher ,target_publisher ;
     //subscriber
@@ -38,10 +38,10 @@ class pantiltPositionControlClass{
     dynamic_reconfigure::Server<pantilt_position_control::goal_coefficient_paramConfig >::CallbackType f ;
 	// msg 変数 
 	obstacle_detection_2019::ClassificationVelocityData copyTargetGravityCenterMessage;//カメラ座標からの対象物体の重心コピー用
-	geometry_msgs::Twist targetGravityCenterMessage;//カメラ座標からの対象物体の重心
+	geometry_msgs::Twist targetGravityCenterMessage;//カメラ座標からの対象物体の重心精度解析用
 	geometry_msgs::Twist beegoMessage;//ビーゴ命令用
 	std_msgs::UInt16MultiArray panTiltMessage;//ラテパンダ命令用
-	pantilt_position_control::pantiltArray pantiltTimeMessage;//時間付きpwm角速度
+	pantilt_position_control::pantiltArray pantiltTimeMessage;//時間付きpwm角速度解析用
 	ros::Time time ;//時間変数
 	// 各変数の使用場所
 	double distance_x ,distance_y ,distance_z ;// 目標距離rqt設定
@@ -53,7 +53,8 @@ class pantiltPositionControlClass{
 	double gcCluster;//クラスタ距離
 	double width ;//対象の幅距離
 	double widthMax ;//幅の最大距離
-	double length ; //奥行き
+	double length ; //対象の奥行き距離
+	double lengthMax ;//奥行きの最大距離
 	double ellipse ;//楕円
 	double eps ;// 打ち切り精度
 	int i ,limit ;// カウンタ変数と打ち切り回数
@@ -113,9 +114,9 @@ void pantiltPositionControlClass::Config_Callback_Function(pantilt_position_cont
 	distance_y	 = config.distance_y ;
 	distance_z	 = config.distance_z ;
 	ROS_INFO("reconfigure_ok lambda = %f" , lambda);
-	ROS_INFO("reconfigure_ok distance_x = %f",distance_x );
-	ROS_INFO("reconfigure_ok distance_y = %f",distance_y );
-	ROS_INFO("reconfigure_ok distance_z = %f",distance_z );
+	ROS_INFO("reconfigure_ok goal_distance_x = %f",distance_x );
+	ROS_INFO("reconfigure_ok goal_distance_y = %f",distance_y );
+	ROS_INFO("reconfigure_ok goal_distance_z = %f",distance_z );
 }
 // 検出された位置情報のコールバック関数
 void pantiltPositionControlClass::TargetPointCallback(const obstacle_detection_2019::ClassificationVelocityData::ConstPtr& msg){
@@ -139,11 +140,10 @@ void pantiltPositionControlClass::goalSet(){
 	t_g_c(0) = distance_x ;
 	t_g_c(1) = distance_y ;
 	t_g_c(2) = distance_z ;
-	ROS_INFO("goal_distance= %f" ,t_g_c(0));
-	ROS_INFO("goal_distance= %f" ,t_g_c(1));
-	ROS_INFO("goal_distance= %f" ,t_g_c(2));
-	// 目標角度は0　 対象までの相対姿勢
-	phi_g_c = Eigen::Vector3d::Zero();
+	ROS_INFO("goal_distance_x= %f" ,t_g_c(0));
+	ROS_INFO("goal_distance_y= %f" ,t_g_c(1));
+	ROS_INFO("goal_distance_z= %f" ,t_g_c(2));
+	phi_g_c = Eigen::Vector3d::Zero();// 目標角度は0　 対象までの相対姿勢
 	ROS_INFO("goal_position_set_ok");
 }
 // 検出された障害物の追跡対象とその重心位置の決定方法
@@ -154,62 +154,91 @@ void pantiltPositionControlClass::targetDecision(){
 				       +distance_y*distance_y
 					   );
 	ROS_INFO("goal_distance = %f",goalDistance);		   
-	// 各セルごとの重心位置とクラスタ全体の重心との距離を比較し最大距離を求めその円の半径を対象の幅とする
 	// 全クラスタの中の重心がロボットとの距離と一番近いのを追跡対象にする
-	for(l = 0; l < (int)copyTargetGravityCenterMessage.data.size(); l++){
+	for(l = 0; l < (int)copyTargetGravityCenterMessage.data.size() ; l++){
 		// クラスタ距離の計算 高さは考慮しない
 		gcCluster = sqrt(copyTargetGravityCenterMessage.data[l].gc.x*copyTargetGravityCenterMessage.data[l].gc.x
 						+copyTargetGravityCenterMessage.data[l].gc.y*copyTargetGravityCenterMessage.data[l].gc.y
 						);
-		ROS_INFO("gc_cluster[%d] = %f",l,gcCluster);
+		ROS_INFO("gc_cluster[%d] = %f",l, gcCluster);
 		// 一番最初の検出した障害物
-		if(l == 0 && gcCluster >= goalDistance){
-				gcMin = gcCluster ;
-				ROS_INFO("first_gravity_center");
-			// 速度推定時のカルマンフィルタ使用よりセンサノイズ除去後データを障害物位置に決定
-			targetGravityCenterMessage.linear.x = copyTargetGravityCenterMessage.data[l].gc.y;//重心
-			targetGravityCenterMessage.linear.y = copyTargetGravityCenterMessage.data[l].gc.y;//重心
-			targetGravityCenterMessage.linear.z = copyTargetGravityCenterMessage.data[l].gc.z;//重心
-		}
-		// 一番距離が近い障害物をgcMinに入れる
-		if(gcMin > gcCluster && gcCluster >= goalDistance){
+		if(gcCluster >= goalDistance && l == 0){
 			gcMin = gcCluster ;
-			//重心の幅求める
 			widthMax = 0 ;
-			//特定したクラスタを障害物としてその重心からの幅計算
- 			for(k = 0; k < (int)copyTargetGravityCenterMessage.data[l].pt.size() ; k++){
-				width = sqrt(
-							 ((copyTargetGravityCenterMessage.data[l].pt[k].x - copyTargetGravityCenterMessage.data[l].gc.x)
-							* (copyTargetGravityCenterMessage.data[l].pt[k].x - copyTargetGravityCenterMessage.data[l].gc.x))
-							+((copyTargetGravityCenterMessage.data[l].pt[k].y - copyTargetGravityCenterMessage.data[l].gc.y)
-							* (copyTargetGravityCenterMessage.data[l].pt[k].y - copyTargetGravityCenterMessage.data[l].gc.y))
-							);
-    			// 全体の重心から最も広い幅をwidthMaxに入れる
+			lengthMax = 0 ;
+			ROS_INFO("first_gravity_center");
+			for(k = 0; k < (int)copyTargetGravityCenterMessage.data[l].pt.size() ; k++){
+				width = sqrt((copyTargetGravityCenterMessage.data[l].pt[k].x - copyTargetGravityCenterMessage.data[l].gc.x)
+							*(copyTargetGravityCenterMessage.data[l].pt[k].x - copyTargetGravityCenterMessage.data[l].gc.x));
+				length = sqrt((copyTargetGravityCenterMessage.data[l].pt[k].y - copyTargetGravityCenterMessage.data[l].gc.y)
+							*(copyTargetGravityCenterMessage.data[l].pt[k].y - copyTargetGravityCenterMessage.data[l].gc.y));
+    			// 全体の重心から最も広い幅,奥行きをwidthMax,lengthMaxに入れる
 				if(width >= widthMax){
     			    widthMax = width;
     			}
-				width = 0 ;
+				if(length >= lengthMax){
+					lengthMax = length ;
+				}
     		}
-			// センサー誤差は速度推定によりカルマンフィルタが使用されているためセンサデータそのままで障害物位置確定
-			targetGravityCenterMessage.linear.x = copyTargetGravityCenterMessage.data[l].gc.y;//重心
+			ROS_INFO("widthMax = %f",widthMax);
+			ROS_INFO("lengthMax = %f",lengthMax);
+			// 速度推定時のカルマンフィルタ使用よりセンサノイズ除去後データを障害物位置に決定
+			targetGravityCenterMessage.linear.x = copyTargetGravityCenterMessage.data[l].gc.x;//重心
 			targetGravityCenterMessage.linear.y = copyTargetGravityCenterMessage.data[l].gc.y;//重心
 			targetGravityCenterMessage.linear.z = copyTargetGravityCenterMessage.data[l].gc.z;//重心
 		}
+		// 検出2個目から一番距離が近い障害物をgcMinに入れる
+		else if(gcMin > gcCluster && gcCluster >= goalDistance && l != 0)
+		{
+			gcMin = gcCluster ;
+			//重心の幅奥行きを求める
+			widthMax = 0 ;
+			lengthMax = 0 ;
+			//特定したクラスタを障害物としてその重心からの幅計算
+ 			for(k = 0; k < (int)copyTargetGravityCenterMessage.data[l].pt.size() ; k++)
+			{
+				width = sqrt(
+							 (copyTargetGravityCenterMessage.data[l].pt[k].x - copyTargetGravityCenterMessage.data[l].gc.x)
+							* (copyTargetGravityCenterMessage.data[l].pt[k].x - copyTargetGravityCenterMessage.data[l].gc.x));
+				length = sqrt(
+							 (copyTargetGravityCenterMessage.data[l].pt[k].y - copyTargetGravityCenterMessage.data[l].gc.y)
+							* (copyTargetGravityCenterMessage.data[l].pt[k].y - copyTargetGravityCenterMessage.data[l].gc.y));
+    			// 全体の重心から最も広い幅,奥行きをwidthMax,lengthMaxに入れる
+				if(width >= widthMax)
+				{
+    			    widthMax = width;
+    			}
+				if(length >= lengthMax)
+				{
+					lengthMax = length ;
+				}
+			}	
+			ROS_INFO("widthMax = %f",widthMax);
+			ROS_INFO("lengthMax = %f",lengthMax);
+			// 速度推定時のカルマンフィルタ使用よりセンサノイズ除去後データを障害物位置に決定
+			targetGravityCenterMessage.linear.x = copyTargetGravityCenterMessage.data[l].gc.x;//重心
+			targetGravityCenterMessage.linear.y = copyTargetGravityCenterMessage.data[l].gc.y;//重心
+			targetGravityCenterMessage.linear.z = copyTargetGravityCenterMessage.data[l].gc.z;//重心
+		}
+		else if(gcCluster < goalDistance){
+			check = false ;//停止判定変数	
+			break ; //for文脱出
+			ROS_INFO("emergency_stop");
+		}
 	}
-	ROS_INFO("width = %f",widthMax);
 	ROS_INFO("position_x= %f" ,targetGravityCenterMessage.linear.x);
 	ROS_INFO("position_y= %f" ,targetGravityCenterMessage.linear.y);
 	ROS_INFO("position_z= %f" ,targetGravityCenterMessage.linear.z);
 	ROS_INFO("cluster_numbers = %d",(int)copyTargetGravityCenterMessage.data.size());
 	// 対象の幅とパンチルトの揺れを考慮した距離の範囲内で終了
-	length = widthMax;// 奥行き設定 とりあえず円
-	ellipse = ((distance_x - targetGravityCenterMessage.linear.x) * (distance_x- targetGravityCenterMessage.linear.x) / (widthMax * widthMax)) 
-			+ ((distance_y - targetGravityCenterMessage.linear.y) * (distance_y- targetGravityCenterMessage.linear.y) / (length * length)) ;
-	ROS_INFO("length  =  %f" ,length );
+	widthMax = widthMax*0.5 ;
+	lengthMax = lengthMax*0.5 ;
+	ellipse = ((distance_x - targetGravityCenterMessage.linear.x) * (distance_x - targetGravityCenterMessage.linear.x) / (widthMax*widthMax)) 
+			+ ((distance_y - targetGravityCenterMessage.linear.y) * (distance_y - targetGravityCenterMessage.linear.y) / (length*length)) ;
 	ROS_INFO("ellipse =  %f" ,ellipse);
 	if(ellipse <= 1 ){
-		check = false ;
-	}//停止判定変数	
+		check = false ;//停止判定変数	
+		}
 }
 // パンチルトカメラ搭載移動ロボット停止判断
 void pantiltPositionControlClass::stop(){	
@@ -222,12 +251,11 @@ void pantiltPositionControlClass::stop(){
 		pan_velocity  = 1 ;
 		tilt_velocity = 1 ;
 		panTiltMessage.data.resize(4);//4つにresize
-		panTiltMessage.data[0] = pan_angular;
-		panTiltMessage.data[1] = tilt_angular;
+		panTiltMessage.data[0] = pan_angular ;
+		panTiltMessage.data[1] = tilt_angular ;
 		panTiltMessage.data[2] = pan_velocity ;
-		panTiltMessage.data[3] = tilt_velocity;
+		panTiltMessage.data[3] = tilt_velocity ;
 		publishJudgment();
-		// 精度を見る用
 		target_publisher.publish(targetGravityCenterMessage);//パンチルト指令値をpublishする
 		ROS_INFO("stop");
 }
@@ -245,14 +273,14 @@ void pantiltPositionControlClass::sensorDataGet(){
 	t_o_c(0) = targetGravityCenterMessage.linear.x ;
 	t_o_c(1) = targetGravityCenterMessage.linear.y ;
 	t_o_c(2) = targetGravityCenterMessage.linear.z ;
-	ROS_INFO("target_distance = %f" ,t_o_c(0));
-	ROS_INFO("target_distance = %f" ,t_o_c(1));
-	ROS_INFO("target_distance = %f" ,t_o_c(2));
-	// 回転方向対象までの相対姿勢 センサでとれないため計算する 
+	ROS_INFO("target_distance_x = %f" ,t_o_c(0));
+	ROS_INFO("target_distance_y = %f" ,t_o_c(1));
+	ROS_INFO("target_distance_z = %f" ,t_o_c(2));
 	// ロールとピッチは本来誤差があるが0とする
-	// 実験よりロボットと対象が動いてない時のパンチルト動作の誤差を見て仮に0に近似する
+	// 実験よりロボットと対象が動いてない時のパンチルト動作の誤差を見て仮に0に近似した
 	psi_o_c(0) = 0 ;//ロール
 	psi_o_c(1) = 0 ;//ピッチ
+	// 回転方向対象までの相対姿勢 センサでとれないため計算する
 	psi_o_c(2) = atan2(t_o_c(0) , t_o_c(1));//ヨー 目標までのズレ 相対姿勢　
 	ROS_INFO("psi= %f" ,psi_o_c(2));
 	ROS_INFO("receive_target_position_ok");
@@ -263,12 +291,12 @@ void pantiltPositionControlClass::deviation(){
 	// 逆かも
 	error_difference  = t_g_c - t_o_c ;//並進
 	error_theta 	  = phi_g_c - psi_o_c ;//回転
-	ROS_INFO("diffe= %f" ,error_difference(0));
-	ROS_INFO("diffe= %f" ,error_difference(1));
-	ROS_INFO("diffe= %f" ,error_difference(2));
+	ROS_INFO("diffe_x = %f" ,error_difference(0));
+	ROS_INFO("diffe_y = %f" ,error_difference(1));
+	ROS_INFO("diffe_z = %f" ,error_difference(2));
 	ROS_INFO("theta= %f" ,error_theta(2));
 	ROS_INFO("error_value_ok");
-	input();//入力
+	input();
 }
 // 入力uの作成
 void pantiltPositionControlClass::input(){
@@ -291,19 +319,19 @@ void pantiltPositionControlClass::beegoVelocityOrder(){
 // 二分法
 void pantiltPositionControlClass::bisectionMethod(){
 	for(i = 1; i <= limit; i++){
-			if(i>limit){
+			if(i > limit){
 				ROS_INFO("no_solution") ;
 				break ;	
 			}
 			pwmCenter = (minRotation + maxRotation) / 2;
-			approximateExpression( maxRotation, pwmCenter, solution); 
-			if (maxSolution * center < 0){
+			approximateExpression(maxRotation ,pwmCenter ,solution ); 
+			if (maxSolution*center < 0){
 				minRotation = pwmCenter;
-			}
+				}
     		else{
 				maxRotation  = pwmCenter;
-			}
-			if ( fabs(maxRotation - minRotation)  < eps){
+				}
+			if (fabs(maxRotation - minRotation) < eps){
 				break ;
 			}
 		}
@@ -334,7 +362,7 @@ void pantiltPositionControlClass::RotationToPWM(){
 		pwmRotationYaw = -1 * pwmRotationYaw ;
 		ROS_INFO("left_turn") ;
 	}
-	else {
+	else{
 		pwmRotationYaw = 0 ;
 		ROS_INFO("no_solution") ;
 	}
@@ -359,10 +387,10 @@ void pantiltPositionControlClass::RotationToPWM(){
 void pantiltPositionControlClass::angularVelocityCopy(){
 	// 指令値用に目標値角度
 	pan_angular = round(error_theta(2)) ;// pwm値四捨五入
-	pan_angular = pan_angular + 90;// panの対象との角度差は正面90度が0度で基準であり0から180の範囲に変換
+	pan_angular = pan_angular + 90;// panの対象との角度差正面90度が0度で基準であり0から180に変換の範囲に変換
 	tilt_angular = 104 ;
-	ROS_INFO_STREAM("pan_angular "<< pan_angular );
-	ROS_INFO_STREAM("tilt_angular"<< tilt_angular);
+	ROS_INFO_STREAM("pan_angular_int "<< pan_angular );
+	ROS_INFO_STREAM("tilt_angular_int "<< tilt_angular);
 	panTiltMessage.data.resize(4);//4つにresize	
 	panTiltMessage.data[0] = pan_angular;
 	panTiltMessage.data[1] = tilt_angular;
@@ -400,26 +428,25 @@ void pantiltPositionControlClass::publishPantiltData(){
 }
 //タイムスタンプ付きパンチルト角度角速度publish
 void pantiltPositionControlClass::publishPantiltTimeData(){
-	plusTime();//パンチルト命令値に時間付与
+	plusTime();
     ROS_INFO("pantilt_edit_publish_ok");
 	pantilt_time_publisher.publish(pantiltTimeMessage);//パンチルトとタイムスタンプをpublishする
 }
 //コンストラクタ：クラス定義に呼び出されるメソッド
 pantiltPositionControlClass::pantiltPositionControlClass()
 :lambda(0.0),distance_x(0.0),distance_y(0.0),distance_z(0.0),check(true)
-,k(0),l(0),goalDistance(0),gcMin(0),gcCluster(0),width(0),widthMax(0)
-,length(0),ellipse(0)
+,k(0),l(0),goalDistance(0),gcMin(0),gcCluster(0)
+,width(0),widthMax(0),length(0),lengthMax(0),ellipse(0)
 ,i(0),limit(0),minRotation(1),maxRotation(256),eps(0.0001)
 ,maxSolution(0),pwmCenter(0),solution(0),center(0)
 ,pwmRotationYaw(0),pwmRotationPitch(0)
 ,pan_velocity(0),tilt_velocity(0),pan_angular(0), tilt_angular(0) 
-,time(ros::Time::now())
-{
+,time(ros::Time::now()){
 	// サブスクライバ
 	position_control_subscriber = nodehandle_subscriber.subscribe("/robot2/classificationDataEstimateVelocity", 1, &pantiltPositionControlClass::TargetPointCallback,this);
 	// パブリッシャ
-	pantilt_publisher = nodehandle_pantilt_publisher.advertise<std_msgs::UInt16MultiArray>("PanTilt",1);
-	pantilt_time_publisher = nodehandle_publisher.advertise<pantilt_position_control::pantiltArray>("PanTiltPlusTimeData",1);
+	pantilt_publisher = nodehandle_pantilt_order_publisher.advertise<std_msgs::UInt16MultiArray>("PanTilt",1);
+	pantilt_time_publisher = nodehandle_pantilt_publisher.advertise<pantilt_position_control::pantiltArray>("PanTiltPlusTimeData",1);
 	beego_publisher = nodehandle_beego_publisher.advertise<geometry_msgs::Twist>("beego/cmd_vel",1);
 	target_publisher = nodehandle_target_publisher.advertise<geometry_msgs::Twist>("TargetPosition",1);
 	// rqt_reconfigure

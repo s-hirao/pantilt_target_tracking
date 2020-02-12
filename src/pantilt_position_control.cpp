@@ -326,8 +326,6 @@ void pantiltPositionControlClass::input(){
 	// du/dx = Ju
 	err_vel_c_t	= -1*(vel_c_t + lambda*t_o_c.cross(error_theta));
 	err_omega_c_psi	= -1*omega_c_psi ;
-	//直線のみのため	
-	//err_vel_c_t(0) = 0.0000 ;	
 	ROS_INFO("vel_x = %f" ,err_vel_c_t(0));
 	ROS_INFO("vel_y = %f" ,err_vel_c_t(1));
 	ROS_INFO("vel_z = %f" ,err_vel_c_t(2));

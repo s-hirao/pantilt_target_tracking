@@ -1,12 +1,5 @@
-実験方法
-ビーゴ　　　直線	　命令値自動
-パンチルト　パンのみ　命令値自動
-対象	　　静止	
-実験目標　　対象を画面の指定範囲内に収める　かつ　距離を指定する　そして止まる
-実験パターン
-目標までの距離を変化させる　１〜３ｍなど　距離による精度　左右あり
-画面内指定範囲の変化	単純にずれによる追跡の限界
-
+自分のページ
+https://github.com/s-hirao/
 
 ターミナル上
 roscore
@@ -14,6 +7,7 @@ roslaunch roscore_communication roscore_communication.launch
 rosparam set use_sim_time true
 rosrun pantilt_velocity_calculation pantilt_velocity_calculation_node
 rostopic echo -p /VelocityData > ~/pantilt_Rotation_vector_csv/rotation_0max_5.csv
+rostopic echo -p ~/hirao_experiment/pantilt_position_control/
 rosbag play --clock (name).bag 
 roslaunch zed_wrapper zed.launch
 
@@ -26,4 +20,15 @@ git remote add origin https://github.com/s-hirao/pantilt_target_tracking
 git push origin master
 git branch --set-upstream-to=origin/master master
 git pull
+
+lattepanda上
+sudo chmod 777 /dev/ttyUSB0
+roslaunch beego_control beego_control.launch
+
+ネットワーク設定
+sudo nmcli connection up　hidakaLab-experiment-2.4G
+
+csv変換
+rosrun rosbag_to_csv rosbag_to_csv.py
+
 

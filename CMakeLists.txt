@@ -171,6 +171,12 @@ add_dependencies(pantilt_position_control_node ${PROJECT_NAME}_generate_messages
 target_link_libraries(pantilt_position_control_node
    ${catkin_LIBRARIES} ${OpenCV_LIBRARIES}
  )
+add_executable(pantilt_position_control_debug_node src/pantilt_position_control_debug.cpp)
+add_dependencies(pantilt_position_control_debug_node ${PROJECT_NAME}_gencfg)
+add_dependencies(pantilt_position_control_debug_node ${PROJECT_NAME}_generate_messages_cpp)
+target_link_libraries(pantilt_position_control_debug_node
+   ${catkin_LIBRARIES} ${OpenCV_LIBRARIES}
+ )
 
 #############
 ## Install ##
